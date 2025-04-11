@@ -24,7 +24,6 @@ The overall design reflects a distributed architecture suitable for scaling web 
 - [Final Technology Stack Selections](#final-technology-stack-selections)
 - [Logging and Debugging](#logging-and-debugging)
 - [Future Enhancements](#future-enhancements)
-- [License](#license)
 
 ---
 
