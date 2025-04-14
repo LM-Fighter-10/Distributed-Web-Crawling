@@ -1,8 +1,8 @@
 # celeryconfig.py
 from kombu import Exchange, Queue
 
-broker_url = 'redis://localhost:6379/0'
-result_backend = 'redis://localhost:6379/1'
+broker_url = 'redis://10.128.0.2:6379/0'
+result_backend = 'redis://10.128.0.2:6379/1'
 
 task_queues = (
     Queue('crawl_tasks', Exchange('crawl'), routing_key='crawl.url'),

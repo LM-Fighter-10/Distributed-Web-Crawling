@@ -7,12 +7,12 @@ from urllib.parse import urljoin
 import time
 from elasticsearch import Elasticsearch
 
-app = Celery('tasks', broker='redis://localhost:6379/0')
+app = Celery('tasks', broker='redis://10.128.0.2:6379/0')
 app.config_from_object('celeryconfig')
 
-mongo = MongoClient("mongodb://localhost:27017")
+mongo = MongoClient("mongodb://10.128.0.2:27017")
 db = mongo['crawler_system']
-es = Elasticsearch("http://localhost:9200")
+es = Elasticsearch("http://10.128.0.2:9200")
 
 @app.task(name='tasks.crawl_url')
 def crawl_url(task_id, url, depth=1):
