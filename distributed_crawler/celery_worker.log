@@ -1,10 +1,10 @@
-[1;36m 
+ 
  -------------- celery@instance-20250414-221611 v5.5.1 (immunity)
 --- ***** ----- 
--- ******* ---- Linux-6.1.0-31-cloud-amd64-x86_64-with-glibc2.36 2025-04-14 23:42:45
+-- ******* ---- Linux-6.1.0-31-cloud-amd64-x86_64-with-glibc2.36 2025-04-14 23:48:17
 - *** --- * --- 
 - ** ---------- [config]
-- ** ---------- .> app:         tasks:0x7f77254659d0
+- ** ---------- .> app:         tasks:0x7ff459769ad0
 - ** ---------- .> transport:   redis://10.128.0.2:6379/0
 - ** ---------- .> results:     redis://10.128.0.2:6379/1
 - *** --- * --- .> concurrency: 2 (prefork)
@@ -13,7 +13,31 @@
  -------------- [queues]
                 .> crawl_tasks      exchange=crawl(direct) key=crawl.url
                 
-[0m[0m
+
 [tasks]
   . tasks.crawl_url
-[0m
+
+[2025-04-14 23:48:17,862: INFO/MainProcess] Connected to redis://10.128.0.2:6379/0
+[2025-04-14 23:48:17,869: INFO/MainProcess] mingle: searching for neighbors
+[2025-04-14 23:48:18,887: INFO/MainProcess] mingle: all alone
+[2025-04-14 23:48:18,912: INFO/MainProcess] celery@instance-20250414-221611 ready.
+[2025-04-14 23:48:29,119: INFO/MainProcess] Task tasks.crawl_url[9c0a40d5-ec2f-402b-ab97-19637bd08286] received
+[2025-04-14 23:48:29,121: WARNING/ForkPoolWorker-1] Crawling: https://www.example.com
+[2025-04-14 23:48:29,157: INFO/MainProcess] Task tasks.crawl_url[ba080a27-538f-4008-a61f-aafc803ccc6c] received
+[2025-04-14 23:48:29,158: WARNING/ForkPoolWorker-2] Crawling: https://en.wikipedia.org/wiki/Web_crawler
+[2025-04-14 23:48:29,224: WARNING/ForkPoolWorker-1] /home/omaralaa927/myenv/lib/python3.11/site-packages/pymongo/synchronous/mongo_client.py:2565: UserWarning: MongoClient opened before fork. May not be entirely fork-safe, proceed with caution. See PyMongo's documentation for details: https://dochub.mongodb.org/core/pymongo-fork-deadlock
+  return self._read() if self._is_read else self._write()
+
+[2025-04-14 23:48:29,251: INFO/ForkPoolWorker-1] PUT http://10.128.0.2:9200/web_pages/_doc/https%3A%2F%2Fwww.example.com [status:200 duration:0.016s]
+[2025-04-14 23:48:29,339: WARNING/ForkPoolWorker-1] /home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/tasks.py:41: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
+  es.index(index="web_pages", id=url, body={"url": url, "text": text})
+
+[2025-04-14 23:48:29,348: INFO/ForkPoolWorker-1] Task tasks.crawl_url[9c0a40d5-ec2f-402b-ab97-19637bd08286] succeeded in 0.226706677999573s: None
+[2025-04-14 23:48:29,481: WARNING/ForkPoolWorker-2] /home/omaralaa927/myenv/lib/python3.11/site-packages/pymongo/synchronous/mongo_client.py:2565: UserWarning: MongoClient opened before fork. May not be entirely fork-safe, proceed with caution. See PyMongo's documentation for details: https://dochub.mongodb.org/core/pymongo-fork-deadlock
+  return self._read() if self._is_read else self._write()
+
+[2025-04-14 23:48:29,513: INFO/ForkPoolWorker-2] PUT http://10.128.0.2:9200/web_pages/_doc/https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FWeb_crawler [status:200 duration:0.015s]
+[2025-04-14 23:48:29,580: WARNING/ForkPoolWorker-2] /home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/tasks.py:41: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
+  es.index(index="web_pages", id=url, body={"url": url, "text": text})
+
+[2025-04-14 23:48:29,587: INFO/ForkPoolWorker-2] Task tasks.crawl_url[ba080a27-538f-4008-a61f-aafc803ccc6c] succeeded in 0.429339878999599s: None
