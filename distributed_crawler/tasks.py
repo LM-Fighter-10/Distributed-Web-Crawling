@@ -10,8 +10,9 @@ from elasticsearch import Elasticsearch
 app = Celery('tasks', broker='redis://10.128.0.2:6379/0')
 app.config_from_object('celeryconfig')
 
-mongo = MongoClient("mongodb://10.128.0.2:27017")
-db = mongo['crawler_system']
+MONGO_URI = "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr@cluster0.e6mv0ek.mongodb.net/Crawler?retryWrites=true&w=majority&appName=Cluster0"
+mongo = MongoClient(MONGO_URI)
+db = mongo['Crawler']
 es = Elasticsearch("http://10.128.0.2:9200")
 
 @app.task(name='tasks.crawl_url')

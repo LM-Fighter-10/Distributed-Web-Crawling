@@ -7,8 +7,9 @@ import uuid
 app = Celery('master', broker='redis://localhost:6379/0')
 app.config_from_object('celeryconfig')
 
-mongo = MongoClient("mongodb://localhost:27017")
-db = mongo['crawler_system']
+MONGO_URI = "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr@cluster0.e6mv0ek.mongodb.net/Crawler?retryWrites=true&w=majority&appName=Cluster0"
+mongo = MongoClient(MONGO_URI)
+db = mongo['Crawler']
 task_col = db['task_status']
 
 def add_crawl_task(url, depth=1):
