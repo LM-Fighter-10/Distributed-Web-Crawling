@@ -1,33 +1,15 @@
-# master_node.py
-from celery import Celery
-from pymongo import MongoClient
-from datetime import datetime
-import uuid
+from tasks import crawl_url
+from elasticsearch import Elasticsearch
 
-app = Celery('master', broker='redis://localhost:6379/0')
-app.config_from_object('celeryconfig')
+# Assuming results are returned synchronously for simplicity
+result = crawl_url.delay("https://www.amazon.eg")
+output = result.get(timeout=30)
 
-MONGO_URI = "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr@cluster0.e6mv0ek.mongodb.net/Crawler?retryWrites=true&w=majority&appName=Cluster0"
-mongo = MongoClient(MONGO_URI)
-db = mongo['Crawler']
-task_col = db['task_status']
-
-def add_crawl_task(url, depth=1):
-    task_id = str(uuid.uuid4())
-    app.send_task('tasks.crawl_url', args=[task_id, url, depth])
-    task_col.insert_one({
-        'task_id': task_id,
-        'url': url,
-        'status': 'queued',
-        'created_at': datetime.utcnow()
+if 'text' in output:
+    es = Elasticsearch("http://10.128.0.5:9200")
+    es.index(index="web_pages", id=output['url'], body={
+        "url": output['url'],
+        "text": output['text']
     })
-    print(f"[✔] Task queued: {url}")
-
-# Example usage
-if __name__ == '__main__':
-    seed_urls = [
-        "https://www.amazon.eg",
-        "https://en.wikipedia.org/wiki/Web_crawler"
-    ]
-    for url in seed_urls:
-        add_crawl_task(url, depth=2)
+else:
+    print(f"Error crawling {output['url']}: {output.get('error')}")
