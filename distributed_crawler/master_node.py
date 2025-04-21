@@ -26,7 +26,7 @@ def add_crawl_task(url, depth=1):
 # Example usage
 if __name__ == '__main__':
     seed_urls = [
-        "https://www.example.com",
+        "https://www.amazon.eg",
         "https://en.wikipedia.org/wiki/Web_crawler"
     ]
     for url in seed_urls:

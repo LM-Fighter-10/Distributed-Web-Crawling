@@ -14,7 +14,6 @@ MONGO_URI = "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr@cluster0.e6mv0ek.mongodb
 mongo = MongoClient(MONGO_URI)
 db = mongo['Crawler']
 es = Elasticsearch("http://10.128.0.2:9200")
-
 @app.task(name='tasks.crawl_url')
 def crawl_url(task_id, url, depth=1):
     print(f"Crawling: {url}")
