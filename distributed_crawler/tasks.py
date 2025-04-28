@@ -22,7 +22,7 @@ app.conf.update(task_track_started=True)
 
 # MongoDB URI
 mongo_uri = (
-    "mongodb://10.128.0.4:27017/?retryWrites=true&w=majority"
+    "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr@cluster0.e6mv0ek.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 )
 
 # Elasticsearch
