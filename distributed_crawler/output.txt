@@ -1,0 +1,66 @@
+
+ 
+ -------------- celery@crawler-node v5.5.1 (immunity)
+--- ***** ----- 
+-- ******* ---- Linux-6.1.0-33-cloud-amd64-x86_64-with-glibc2.36 2025-04-28 19:51:34
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         tasks:0x7f08b1e3a710
+- ** ---------- .> transport:   redis://10.128.0.2:6379/0
+- ** ---------- .> results:     redis://10.128.0.2:6379/1
+- *** --- * --- .> concurrency: 2 (prefork)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . tasks.crawl_url
+
+[2025-04-28 19:51:35,226: INFO/MainProcess] Connected to redis://10.128.0.2:6379/0
+[2025-04-28 19:51:35,233: INFO/MainProcess] mingle: searching for neighbors
+[2025-04-28 19:51:36,255: INFO/MainProcess] mingle: all alone
+[2025-04-28 19:51:36,285: INFO/MainProcess] celery@crawler-node ready.
+
+worker: Warm shutdown (MainProcess)
+ 
+ -------------- celery@crawler-node v5.5.1 (immunity)
+--- ***** ----- 
+-- ******* ---- Linux-6.1.0-33-cloud-amd64-x86_64-with-glibc2.36 2025-04-28 20:14:19
+- *** --- * --- 
+- ** ---------- [config]
+- ** ---------- .> app:         tasks:0x7fc4ce7770d0
+- ** ---------- .> transport:   redis://10.128.0.2:6379/0
+- ** ---------- .> results:     redis://10.128.0.2:6379/1
+- *** --- * --- .> concurrency: 2 (prefork)
+-- ******* ---- .> task events: OFF (enable -E to monitor tasks in this worker)
+--- ***** ----- 
+ -------------- [queues]
+                .> celery           exchange=celery(direct) key=celery
+                
+
+[tasks]
+  . tasks.crawl_url
+
+[2025-04-28 20:14:20,162: INFO/MainProcess] Connected to redis://10.128.0.2:6379/0
+[2025-04-28 20:14:20,171: INFO/MainProcess] mingle: searching for neighbors
+[2025-04-28 20:14:21,195: INFO/MainProcess] mingle: all alone
+[2025-04-28 20:14:21,221: INFO/MainProcess] celery@crawler-node ready.
+[2025-04-28 20:23:40,449: INFO/MainProcess] Task tasks.crawl_url[4af175ad-fdce-476e-8582-3c5630e7ca58] received
+[2025-04-28 20:23:43,175: ERROR/ForkPoolWorker-1] Task tasks.crawl_url[4af175ad-fdce-476e-8582-3c5630e7ca58] raised unexpected: NameError("name 'normalize_url' is not defined")
+Traceback (most recent call last):
+  File "/home/omaralaa927/myenv/lib/python3.11/site-packages/celery/app/trace.py", line 453, in trace_task
+    R = retval = fun(*args, **kwargs)
+                 ^^^^^^^^^^^^^^^^^^^^
+  File "/home/omaralaa927/myenv/lib/python3.11/site-packages/celery/app/trace.py", line 736, in __protected_call__
+    return self.run(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/tasks.py", line 117, in crawl_url
+    process_url(seed_url, depth)
+  File "/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/tasks.py", line 54, in process_url
+    u = normalize_url(u)
+        ^^^^^^^^^^^^^
+NameError: name 'normalize_url' is not defined
+
+worker: Warm shutdown (MainProcess)

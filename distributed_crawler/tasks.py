@@ -1,4 +1,5 @@
 # tasks.py
+
 from celery import Celery
 import time
 import requests
@@ -9,10 +10,11 @@ import hashlib
 import tldextract
 from urllib.parse import urlparse, urljoin, urlunparse
 from robotexclusionrulesparser import RobotExclusionRulesParser
-import boto3
-import os
+from google.cloud import storage
 
+# -------------------
 # Celery setup
+# -------------------
 app = Celery(
     'tasks',
     broker='redis://10.128.0.2:6379/0',
@@ -20,22 +22,28 @@ app = Celery(
 )
 app.conf.update(task_track_started=True)
 
-# MongoDB URI
-mongo_uri = (
-    "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr@cluster0.e6mv0ek.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-)
+# -------------------
+# MongoDB setup
+# -------------------
+MONGO_URI = "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr@cluster0.e6mv0ek.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
-# Elasticsearch
-es = Elasticsearch([{'host': '10.128.0.5', 'port': 9200, 'scheme': 'http'}])
+def get_mongo_client():
+    # Each worker process gets its own client
+    return MongoClient(MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
 
-# S3 client
-s3 = boto3.client('s3')
-bucket = os.getenv('CRAWL_BUCKET', 'my-crawl-bucket')
+# -------------------
+# Elasticsearch setup
+# -------------------
+es = Elasticsearch([
+    {'host': '10.128.0.5', 'port': 9200, 'scheme': 'http'}
+])
 
-
-def normalize_url(url):
+# -------------------
+# URL normalization helper
+# -------------------
+def normalize_url(url: str) -> str:
     parsed = urlparse(url)
-    path   = parsed.path.rstrip('/') or '/'
+    path = parsed.path.rstrip('/') or '/'
     return urlunparse((
         parsed.scheme,
         parsed.netloc.lower(),
@@ -45,64 +53,79 @@ def normalize_url(url):
         parsed.fragment
     ))
 
+# -------------------
+# Crawl task
+# -------------------
 @app.task(bind=True)
-def crawl_url(self, seed_url, depth, politeness):
-    mongo = MongoClient(mongo_uri)
+def crawl_url(self, seed_url: str, depth: int, politeness: float):
+    """Crawl a site to the given depth, index pages, store raw HTML in GCS."""
+    mongo = get_mongo_client()
     db = mongo['Crawler']
     visited = set()
     robots_cache = {}
     seed_domain = tldextract.extract(seed_url).registered_domain
 
     try:
+        # Mark task queued→started
         db.task_status.update_one(
             {'task_id': self.request.id},
             {'$set': {'status': 'started', 'started_at': time.time()}},
             upsert=True
         )
 
-        def process_url(u, current_depth):
+        def process_url(u: str, current_depth: int):
             nonlocal visited, robots_cache
+
             if current_depth < 0:
                 return
+
+            # Normalize & validate
             u = normalize_url(u)
             parsed = urlparse(u)
             if not parsed.scheme or not parsed.netloc:
                 return
+
+            # Stay in same domain
             if tldextract.extract(u).registered_domain != seed_domain:
                 return
+
+            # Fetch & cache robots.txt
             domain_key = f"{parsed.scheme}://{parsed.netloc}"
             if domain_key not in robots_cache:
                 rerp = RobotExclusionRulesParser()
                 try:
                     rerp.fetch(f"{domain_key}/robots.txt")
-                except:
-                    robots_cache[domain_key] = None
-                else:
                     robots_cache[domain_key] = rerp
-            rerp = robots_cache.get(domain_key)
+                except Exception:
+                    robots_cache[domain_key] = None
+            rerp = robots_cache[domain_key]
             if not rerp or not rerp.is_allowed("MyCrawlerBot", u):
                 return
+
+            # Dedupe
             if u in visited:
                 return
             visited.add(u)
+
+            # Respect crawl-delay
             delay = (rerp.get_crawl_delay("MyCrawlerBot") or politeness)
             time.sleep(delay)
 
+            # Fetch page
             try:
                 resp = requests.get(u, timeout=10, verify=False)
                 resp.raise_for_status()
             except Exception:
                 return
 
+            # Parse text
             soup = BeautifulSoup(resp.text, 'html.parser')
             text = soup.get_text(separator='\n', strip=True)
-            doc_id = hashlib.sha1(u.encode()).hexdigest()
 
-            # store raw HTML + text
+            # Persist text in Mongo
             db.crawled_pages.update_one(
                 {'url': u},
                 {'$set': {
-                    'html': resp.text,
                     'text': text,
                     'depth': depth - current_depth,
                     'timestamp': time.time()
@@ -110,29 +133,39 @@ def crawl_url(self, seed_url, depth, politeness):
                 upsert=True
             )
 
-            # upload raw HTML to S3
-            s3.put_object(Bucket=bucket, Key=f"{doc_id}.html", Body=resp.text)
-
-            # index in Elasticsearch
+            # Index in Elasticsearch
+            doc_id = hashlib.sha1(u.encode('utf-8')).hexdigest()
             es.index(
                 index='web_pages',
                 id=doc_id,
                 body={'url': u, 'text': text}
             )
 
+            # **Upload raw HTML to GCS**
+            gcs = storage.Client()  # uses VM's service account
+            bucket = gcs.bucket('distributed-crawler')
+            blob = bucket.blob(f"{doc_id}.html")
+            blob.upload_from_string(resp.text, content_type='text/html')
+
+            # Discover & recurse
             for link in soup.find_all('a', href=True):
                 href = link['href'].strip()
                 if not href or href.startswith('javascript:'):
                     continue
-                absolute_url = urljoin(u, href)
-                process_url(absolute_url, current_depth - 1)
+                absolute = urljoin(u, href)
+                process_url(absolute, current_depth - 1)
 
+        # Kick off crawl recursion
         process_url(seed_url, depth)
+
+        # Mark task completed
         db.task_status.update_one(
             {'task_id': self.request.id},
             {'$set': {'status': 'completed', 'finished_at': time.time()}}
         )
+
     except Exception as e:
+        # Mark failure
         db.task_status.update_one(
             {'task_id': self.request.id},
             {'$set': {'status': 'failed', 'error': str(e)}}
@@ -140,3 +173,4 @@ def crawl_url(self, seed_url, depth, politeness):
         raise
     finally:
         mongo.close()
+
