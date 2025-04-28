@@ -32,6 +32,19 @@ es = Elasticsearch([{'host': '10.128.0.5', 'port': 9200, 'scheme': 'http'}])
 s3 = boto3.client('s3')
 bucket = os.getenv('CRAWL_BUCKET', 'my-crawl-bucket')
 
+
+def normalize_url(url):
+    parsed = urlparse(url)
+    path   = parsed.path.rstrip('/') or '/'
+    return urlunparse((
+        parsed.scheme,
+        parsed.netloc.lower(),
+        path,
+        parsed.params,
+        parsed.query,
+        parsed.fragment
+    ))
+
 @app.task(bind=True)
 def crawl_url(self, seed_url, depth, politeness):
     mongo = MongoClient(mongo_uri)
