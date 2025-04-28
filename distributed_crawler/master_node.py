@@ -87,8 +87,12 @@ def enqueue_crawl(url, depth, politeness):
     print(f"[✔] Task queued: {url} (id={result.id})")
 
 
-def do_search(keywords):
+def do_search(keywords, mode):
     q = {"query": {"match": {"text": keywords}}}
+    if mode == 'phrase':
+        q = {"query": {"match_phrase": {"text": keywords}}}
+    elif mode == 'boolean':
+        q = {"query": {"query_string": {"default_field": "text", "query": keywords}}}
     try:
         resp = es.search(index="web_pages", body=q)
     except NotFoundError:
@@ -128,6 +132,10 @@ if __name__ == '__main__':
 
     c2 = sub.add_parser('search', help='Keyword search')
     c2.add_argument('-k','--keywords', required=True)
+    c2.add_argument('-m','--mode',
+                    choices=['match','phrase','boolean'],
+                    default='match',
+                    help='Search mode: simple match, exact phrase, or boolean')
 
     c3 = sub.add_parser('status', help='Show system status')
 
@@ -138,7 +146,7 @@ if __name__ == '__main__':
     if args.cmd == 'crawl':
         enqueue_crawl(args.url, args.depth, args.politeness)
     elif args.cmd == 'search':
-        do_search(args.keywords)
+        do_search(args.keywords, args.mode)
     elif args.cmd == 'status':
         show_status()
     elif args.cmd == 'monitor':
