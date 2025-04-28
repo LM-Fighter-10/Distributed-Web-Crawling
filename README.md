@@ -1,5 +1,5 @@
 # Distributed Web Crawler & Indexer
-
+ 
 This project implements a basic distributed web crawling and indexing system using MPI (Message Passing Interface) with Python. The system is structured into three primary node types:
 
 - **Master Node** – Coordinates the system, assigns URLs for crawling, collects new URLs, and manages node tasks.
