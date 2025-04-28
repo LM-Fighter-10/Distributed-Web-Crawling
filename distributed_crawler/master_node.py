@@ -136,7 +136,7 @@ if __name__ == '__main__':
                     choices=['match','phrase','boolean'],
                     default='match',
                     help='Search mode: simple match, exact phrase, or boolean')
-    p_search.add_argument(
+    c2.add_argument(
         '-n','--size', type=int, default=10,
         help='How many results to return (default=10)'
     )
