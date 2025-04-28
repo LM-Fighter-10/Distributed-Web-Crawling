@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import time
+import threading
 from celery import Celery
 from pymongo import MongoClient
 from elasticsearch import Elasticsearch, NotFoundError
@@ -11,13 +12,64 @@ app.conf.update(task_track_started=True)
 
 # MongoDB connection
 mongo = MongoClient(
-    "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr@cluster0.e6mv0ek.mongodb.net/"
+    "mongodb://10.128.0.4:27017/"
 )
 db = mongo['Crawler']
 
 # Elasticsearch connection
 es = Elasticsearch([{'host': '10.128.0.5', 'port': 9200, 'scheme': 'http'}])
 
+# Known crawler node IDs (as reported by Celery)
+KNOWN_NODES = ['celery@crawler-node']
+
+# -- Heartbeat Monitor --
+def heartbeat_monitor(interval=60):
+    while True:
+        try:
+            pong = app.control.ping(timeout=5.0)
+            alive = [list(d.keys())[0] for d in pong]
+            # update node status
+            for node in KNOWN_NODES:
+                db.node_status.update_one(
+                    {'node': node},
+                    {'$set': {
+                        'active': node in alive,
+                        'last_seen': time.time()
+                    }},
+                    upsert=True
+                )
+        except Exception:
+            pass
+        time.sleep(interval)
+
+# -- Task Timeout & Re-queue Monitor --
+def monitor_tasks(interval=300):
+    from tasks import crawl_url
+    while True:
+        stale = list(db.task_status.find({
+            'status': {'$in': ['queued', 'started']},
+            'created_at': {'$lt': time.time() - 3600}
+        }))
+        for task in stale:
+            # mark timeout
+            db.task_status.update_one(
+                {'_id': task['_id']},
+                {'$set': {'status': 'timeout', 'finished_at': time.time()}}
+            )
+            # re-enqueue
+            new = crawl_url.delay(task['url'], task['depth'], task['politeness'])
+            db.task_status.insert_one({
+                'task_id': new.id,
+                'url': task['url'],
+                'depth': task['depth'],
+                'politeness': task['politeness'],
+                'status': 'requeued',
+                'created_at': time.time(),
+                'origin': task['task_id']
+            })
+        time.sleep(interval)
+
+# -- CLI commands --
 def enqueue_crawl(url, depth, politeness):
     from tasks import crawl_url
     result = crawl_url.delay(url, depth, politeness)
@@ -34,6 +86,7 @@ def enqueue_crawl(url, depth, politeness):
     })
     print(f"[✔] Task queued: {url} (id={result.id})")
 
+
 def do_search(keywords):
     q = {"query": {"match": {"text": keywords}}}
     try:
@@ -41,34 +94,28 @@ def do_search(keywords):
     except NotFoundError:
         print("Index not found. Have you run any crawls yet?")
         return
-    
     hits = resp['hits']['hits']
     db.search_history.insert_one({
         'keywords': keywords,
         'results': [h['_source']['url'] for h in hits],
         'timestamp': time.time()
     })
-    
     print(f"Found {len(hits)} results for '{keywords}':")
     for h in hits:
         print(" •", h['_source']['url'])
 
-def monitor_tasks():
-    """Check for stale tasks every hour"""
-    while True:
-        stale = db.task_status.find({
-            'status': {'$in': ['queued', 'started']},
-            'created_at': {'$lt': time.time() - 3600}  # Older than 1 hour
-        })
-        
-        for task in stale:
-            db.task_status.update_one(
-                {'_id': task['_id']},
-                {'$set': {'status': 'timeout',
-                         'finished_at': time.time()}}
-            )
-        
-        time.sleep(3600)  # Check hourly
+
+def show_status():
+    crawled = db.crawled_pages.count_documents({})
+    indexed = es.count(index='web_pages')['count']
+    total_tasks = db.task_status.count_documents({})
+    active_nodes = len([s for s in db.node_status.find({'active': True})])
+    print("--- System Status ---")
+    print(f"Pages crawled: {crawled}")
+    print(f"Pages indexed: {indexed}")
+    print(f"Total tasks: {total_tasks}")
+    print(f"Active crawlers: {active_nodes}")
+
 
 if __name__ == '__main__':
     p = argparse.ArgumentParser(prog='master_node.py')
@@ -82,13 +129,20 @@ if __name__ == '__main__':
     c2 = sub.add_parser('search', help='Keyword search')
     c2.add_argument('-k','--keywords', required=True)
 
-    c3 = sub.add_parser('monitor', help='Start task monitor')
+    c3 = sub.add_parser('status', help='Show system status')
+
+    c4 = sub.add_parser('monitor', help='Start monitors')
 
     args = p.parse_args()
-    
+
     if args.cmd == 'crawl':
         enqueue_crawl(args.url, args.depth, args.politeness)
     elif args.cmd == 'search':
         do_search(args.keywords)
+    elif args.cmd == 'status':
+        show_status()
     elif args.cmd == 'monitor':
-        monitor_tasks()
+        # start heartbeat & timeout monitors
+        t1 = threading.Thread(target=monitor_tasks, daemon=True)
+        t2 = threading.Thread(target=heartbeat_monitor, daemon=True)
+        t1.start(); t2.start(); t1.join()
