@@ -87,14 +87,14 @@ def enqueue_crawl(url, depth, politeness):
     print(f"[✔] Task queued: {url} (id={result.id})")
 
 
-def do_search(keywords, mode):
+def do_search(keywords, mode, size):
     q = {"query": {"match": {"text": keywords}}}
     if mode == 'phrase':
         q = {"query": {"match_phrase": {"text": keywords}}}
     elif mode == 'boolean':
         q = {"query": {"query_string": {"default_field": "text", "query": keywords}}}
     try:
-        resp = es.search(index="web_pages", body=q)
+        resp = es.search(index="web_pages", body=body, size=size)
     except NotFoundError:
         print("Index not found. Have you run any crawls yet?")
         return
@@ -136,6 +136,10 @@ if __name__ == '__main__':
                     choices=['match','phrase','boolean'],
                     default='match',
                     help='Search mode: simple match, exact phrase, or boolean')
+    p_search.add_argument(
+        '-n','--size', type=int, default=10,
+        help='How many results to return (default=10)'
+    )
 
     c3 = sub.add_parser('status', help='Show system status')
 
@@ -146,7 +150,7 @@ if __name__ == '__main__':
     if args.cmd == 'crawl':
         enqueue_crawl(args.url, args.depth, args.politeness)
     elif args.cmd == 'search':
-        do_search(args.keywords, args.mode)
+        do_search(args.keywords, args.mode, args.size)
     elif args.cmd == 'status':
         show_status()
     elif args.cmd == 'monitor':
