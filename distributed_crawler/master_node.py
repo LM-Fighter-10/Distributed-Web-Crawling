@@ -6,7 +6,6 @@ import threading
 from celery import Celery
 from pymongo import MongoClient
 from elasticsearch import Elasticsearch, NotFoundError
-import requests
 
 # -------------------
 # Celery config
@@ -35,34 +34,28 @@ db = mongo['Crawler']
 es = Elasticsearch([
     {'host': '10.128.0.5', 'port': 9200, 'scheme': 'http'}
 ])
-INDEXER_NODE_NAME = 'elasticsearch-node'
-
-# -------------------
-# Known crawler nodes
-# -------------------
-KNOWN_NODES = ['celery@crawler-node'] :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
 
 # -------------------
 # Heartbeat Monitor
 # -------------------
-def heartbeat_monitor(interval=10):
+def heartbeat_monitor(interval=60):
     while True:
         now = time.time()
-        # 1. Crawler nodes heartbeat via Celery ping
+        # 1. Crawler worker heartbeats via Celery ping
         try:
             pong = app.control.ping(timeout=5.0)
             alive_workers = {list(d.keys())[0] for d in pong}
-            # Mark all alive nodes as active
-            for node in alive:
+            # Mark alive crawler nodes
+            for node in alive_workers:
                 db.node_status.update_one(
                     {'node': node},
-                    {'$set': {'active': True, 'last_seen': time.time()}},
+                    {'$set': {'active': True, 'last_seen': now}},
                     upsert=True
                 )
-            # Any previously seen node not in 'alive' is now inactive
+            # Mark any other nodes inactive
             db.node_status.update_many(
-                {'node': {'$nin': list(alive)}},
-                {'$set': {'active': False, 'last_seen': time.time()}}
+                {'node': {'$nin': list(alive_workers)}},
+                {'$set': {'active': False, 'last_seen': now}}
             )
         except Exception:
             pass
@@ -71,21 +64,14 @@ def heartbeat_monitor(interval=10):
         try:
             alive_indexer = es.ping()
             db.node_status.update_one(
-                {'node': INDEXER_NODE_NAME},
-                {'$set': {
-                    'active': alive_indexer,
-                    'last_seen': now
-                }},
+                {'node': 'elasticsearch-node'},
+                {'$set': {'active': alive_indexer, 'last_seen': now}},
                 upsert=True
             )
         except Exception:
-            # mark indexer as down if ping fails
             db.node_status.update_one(
-                {'node': INDEXER_NODE_NAME},
-                {'$set': {
-                    'active': False,
-                    'last_seen': now
-                }},
+                {'node': 'elasticsearch-node'},
+                {'$set': {'active': False, 'last_seen': now}},
                 upsert=True
             )
 
@@ -96,6 +82,7 @@ def heartbeat_monitor(interval=10):
 # -------------------
 def monitor_tasks(interval=300):
     from tasks import crawl_url
+
     while True:
         now = time.time()
         stale = list(db.task_status.find({
@@ -190,8 +177,12 @@ def show_status():
     except Exception:
         indexed = 0
     total_tasks = db.task_status.count_documents({})
-    active_crawlers = db.node_status.count_documents({'node': {'$in': KNOWN_CRAWLER_NODES}, 'active': True})
-    indexer_status = db.node_status.find_one({'node': INDEXER_NODE_NAME})
+    # Count active crawler nodes (exclude indexer-node)
+    active_crawlers = db.node_status.count_documents({
+        'node': {'$ne': 'elasticsearch-node'},
+        'active': True
+    })
+    indexer_status = db.node_status.find_one({'node': 'elasticsearch-node'})
 
     print("--- System Status ---")
     print(f"Pages crawled: {crawled}")
@@ -199,9 +190,11 @@ def show_status():
     print(f"Total tasks: {total_tasks}")
     print(f"Active crawlers: {active_crawlers}")
     if indexer_status:
-        print(f"Indexer active: {indexer_status['active']} (last seen {time.ctime(indexer_status['last_seen'])})")
+        state = "active" if indexer_status['active'] else "inactive"
+        last = time.ctime(indexer_status['last_seen'])
+        print(f"Indexer node is {state} (last seen {last})")
     else:
-        print("Indexer status: unknown")
+        print("Indexer node status: unknown")
 
 # -------------------
 # Main CLI handler
