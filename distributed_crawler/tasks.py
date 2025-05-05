@@ -26,9 +26,7 @@ app.conf.update(task_track_started=True)
 # MongoDB setup
 # -------------------
 MONGO_URI = "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr@cluster0.e6mv0ek.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-
 def get_mongo_client():
-    # Each worker process gets its own client
     return MongoClient(MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
 
 # -------------------
@@ -52,6 +50,32 @@ def normalize_url(url: str) -> str:
         parsed.query,
         parsed.fragment
     ))
+
+# -------------------
+# Fault-tolerant indexing task
+# -------------------
+@app.task(bind=True, max_retries=5, default_retry_delay=60)
+def index_document(self, doc_id: str, body: dict):
+    """
+    Attempts to index a document into Elasticsearch.
+    On failure, logs to MongoDB and retries up to 5 times with backoff.
+    """
+    try:
+        es.index(index='web_pages', id=doc_id, body=body)
+    except Exception as exc:
+        # Log the failure for later inspection
+        mongo = get_mongo_client()
+        db = mongo['Crawler']
+        db.index_failures.insert_one({
+            'doc_id': doc_id,
+            'body': body,
+            'error': str(exc),
+            'retry_count': self.request.retries,
+            'timestamp': time.time()
+        })
+        mongo.close()
+        # Retry the task
+        raise self.retry(exc=exc)
 
 # -------------------
 # Crawl task
@@ -102,7 +126,7 @@ def crawl_url(self, seed_url: str, depth: int, politeness: float):
             if not rerp or not rerp.is_allowed("MyCrawlerBot", u):
                 return
 
-            # Dedupe
+            # Deduplicate
             if u in visited:
                 return
             visited.add(u)
@@ -133,19 +157,25 @@ def crawl_url(self, seed_url: str, depth: int, politeness: float):
                 upsert=True
             )
 
-            # Index in Elasticsearch
+            # Generate SHA-1 doc_id
             doc_id = hashlib.sha1(u.encode('utf-8')).hexdigest()
-            es.index(
-                index='web_pages',
-                id=doc_id,
-                body={'url': u, 'text': text}
-            )
 
-            # **Upload raw HTML to GCS**
-            gcs = storage.Client()  # uses VM's service account
-            bucket = gcs.bucket('distributed-crawler')
-            blob = bucket.blob(f"{doc_id}.html")
-            blob.upload_from_string(resp.text, content_type='text/html')
+            # Enqueue fault-tolerant indexing
+            index_document.delay(doc_id, {'url': u, 'text': text})
+
+            # Upload raw HTML to GCS
+            try:
+                gcs = storage.Client()
+                bucket = gcs.bucket('distributed-crawler')
+                blob = bucket.blob(f"{doc_id}.html")
+                blob.upload_from_string(resp.text, content_type='text/html')
+            except Exception as exc:
+                # Log any GCS upload failures
+                db.index_failures.insert_one({
+                    'doc_id': doc_id,
+                    'error': f"GCS upload failed: {exc}",
+                    'timestamp': time.time()
+                })
 
             # Discover & recurse
             for link in soup.find_all('a', href=True):
@@ -173,4 +203,3 @@ def crawl_url(self, seed_url: str, depth: int, politeness: float):
         raise
     finally:
         mongo.close()
-
