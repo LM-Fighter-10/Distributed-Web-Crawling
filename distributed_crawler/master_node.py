@@ -40,7 +40,7 @@ INDEXER_NODE_NAME = 'elasticsearch-node'
 # -------------------
 # Known crawler nodes
 # -------------------
-KNOWN_CRAWLER_NODES = ['celery@crawler-node']
+KNOWN_NODES = ['celery@crawler-node'] :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
 
 # -------------------
 # Heartbeat Monitor
@@ -52,15 +52,18 @@ def heartbeat_monitor(interval=10):
         try:
             pong = app.control.ping(timeout=5.0)
             alive_workers = {list(d.keys())[0] for d in pong}
-            for node in KNOWN_CRAWLER_NODES:
+            # Mark all alive nodes as active
+            for node in alive:
                 db.node_status.update_one(
                     {'node': node},
-                    {'$set': {
-                        'active': node in alive_workers,
-                        'last_seen': now
-                    }},
+                    {'$set': {'active': True, 'last_seen': time.time()}},
                     upsert=True
                 )
+            # Any previously seen node not in 'alive' is now inactive
+            db.node_status.update_many(
+                {'node': {'$nin': list(alive)}},
+                {'$set': {'active': False, 'last_seen': time.time()}}
+            )
         except Exception:
             pass
 
