@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # tasks.py
 
 from celery import Celery
@@ -25,7 +26,11 @@ app.conf.update(task_track_started=True)
 # -------------------
 # MongoDB setup
 # -------------------
-MONGO_URI = "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr@cluster0.e6mv0ek.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+MONGO_URI = (
+    "mongodb+srv://omaralaa927:S3zvCY046ZHU1yyr"
+    "@cluster0.e6mv0ek.mongodb.net/?retryWrites=true"
+    "&w=majority&appName=Cluster0"
+)
 def get_mongo_client():
     return MongoClient(MONGO_URI, tls=True, tlsAllowInvalidCertificates=True)
 
@@ -40,7 +45,7 @@ es = Elasticsearch([
 # URL normalization helper
 # -------------------
 def normalize_url(url: str) -> str:
-    """Make URLs canonical (strip trailing slash, lowercase host)."""
+    """Canonicalize URLs (strip trailing slash, lowercase host)."""
     parsed = urlparse(url)
     path = parsed.path.rstrip('/') or '/'
     return urlunparse((
@@ -58,8 +63,8 @@ def normalize_url(url: str) -> str:
 @app.task(bind=True, max_retries=5, default_retry_delay=60)
 def index_document(self, doc_id: str, body: dict):
     """
-    Attempts to index a document into Elasticsearch.
-    On failure, logs to MongoDB and retries up to 5 times with backoff.
+    Index a document into Elasticsearch with retry on failure.
+    Logs persistent failures to MongoDB.index_failures.
     """
     try:
         es.index(index='web_pages', id=doc_id, body=body)
@@ -79,7 +84,15 @@ def index_document(self, doc_id: str, body: dict):
 # -------------------
 # Recursive crawl helper
 # -------------------
-def process_url(u: str, current_depth: int, seed_domain: str, politeness: float, visited: set, robots_cache: dict):
+def process_url(u: str,
+                current_depth: int,
+                seed_domain: str,
+                politeness: float,
+                visited: set,
+                robots_cache: dict):
+    """
+    Fetch, parse, store, and index a single URL, then recurse to links.
+    """
     if current_depth < 0:
         return
 
@@ -89,11 +102,11 @@ def process_url(u: str, current_depth: int, seed_domain: str, politeness: float,
     if not parsed.scheme or not parsed.netloc:
         return
 
-    # Stay in same domain
+    # Stay on seed domain
     if tldextract.extract(u).registered_domain != seed_domain:
         return
 
-    # Fetch & cache robots.txt
+    # Robots.txt handling
     domain_key = f"{parsed.scheme}://{parsed.netloc}"
     if domain_key not in robots_cache:
         rerp = RobotExclusionRulesParser()
@@ -111,7 +124,7 @@ def process_url(u: str, current_depth: int, seed_domain: str, politeness: float,
         return
     visited.add(u)
 
-    # Respect crawl-delay
+    # Politeness delay
     delay = rerp.get_crawl_delay("MyCrawlerBot") or politeness
     time.sleep(delay)
 
@@ -122,11 +135,11 @@ def process_url(u: str, current_depth: int, seed_domain: str, politeness: float,
     except Exception:
         return
 
-    # Parse text
+    # Extract text
     soup = BeautifulSoup(resp.text, 'html.parser')
     text = soup.get_text(separator='\n', strip=True)
 
-    # Persist text in Mongo
+    # Persist to MongoDB
     mongo = get_mongo_client()
     db = mongo['Crawler']
     db.crawled_pages.update_one(
@@ -139,10 +152,8 @@ def process_url(u: str, current_depth: int, seed_domain: str, politeness: float,
         upsert=True
     )
 
-    # Generate SHA-1 doc_id
+    # Generate doc_id and enqueue indexing
     doc_id = hashlib.sha1(u.encode('utf-8')).hexdigest()
-
-    # Enqueue fault-tolerant indexing
     index_document.delay(doc_id, {'url': u, 'text': text})
 
     # Upload raw HTML to GCS
@@ -160,26 +171,32 @@ def process_url(u: str, current_depth: int, seed_domain: str, politeness: float,
 
     mongo.close()
 
-    # Discover & recurse
+    # Recurse on links
     for link in soup.find_all('a', href=True):
         href = link['href'].strip()
         if not href or href.startswith('javascript:'):
             continue
         absolute = urljoin(u, href)
-        process_url(absolute, current_depth - 1, seed_domain, politeness, visited, robots_cache)
+        process_url(absolute,
+                    current_depth - 1,
+                    seed_domain,
+                    politeness,
+                    visited,
+                    robots_cache)
 
 # -------------------
-# Crawl task
+# Crawl task entrypoint
 # -------------------
 @app.task(bind=True)
 def crawl_url(self, seed_url: str, depth: int, politeness: float):
     """
-    Crawl a site to the given depth, index pages, store raw HTML in GCS.
+    Crawl a website from seed_url to given depth.
+    Stores text in MongoDB, raw HTML in GCS, and indexes via Elasticsearch.
     """
     mongo = get_mongo_client()
     db = mongo['Crawler']
 
-    # Mark task queued→started
+    # Mark as started
     db.task_status.update_one(
         {'task_id': self.request.id},
         {'$set': {'status': 'started', 'started_at': time.time()}},
@@ -190,13 +207,14 @@ def crawl_url(self, seed_url: str, depth: int, politeness: float):
     robots_cache = {}
     seed_domain = tldextract.extract(seed_url).registered_domain
 
-    # Kick off recursion
+    # Begin recursive crawl
     process_url(seed_url, depth, seed_domain, politeness, visited, robots_cache)
 
-    # Mark task completed
+    # Mark as completed
     db.task_status.update_one(
         {'task_id': self.request.id},
         {'$set': {'status': 'completed', 'finished_at': time.time()}},
         upsert=True
     )
+
     mongo.close()
