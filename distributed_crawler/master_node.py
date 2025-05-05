@@ -6,6 +6,7 @@ import threading
 from celery import Celery
 from pymongo import MongoClient
 from elasticsearch import Elasticsearch, NotFoundError
+import requests
 
 # -------------------
 # Celery config
@@ -34,34 +35,58 @@ db = mongo['Crawler']
 es = Elasticsearch([
     {'host': '10.128.0.5', 'port': 9200, 'scheme': 'http'}
 ])
+INDEXER_NODE_NAME = 'elasticsearch-node'
 
 # -------------------
 # Known crawler nodes
 # -------------------
-KNOWN_NODES = ['celery@crawler-node']
-
+KNOWN_CRAWLER_NODES = ['celery@crawler-node']
 
 # -------------------
 # Heartbeat Monitor
 # -------------------
 def heartbeat_monitor(interval=10):
     while True:
+        now = time.time()
+        # 1. Crawler nodes heartbeat via Celery ping
         try:
             pong = app.control.ping(timeout=5.0)
-            alive = {list(d.keys())[0] for d in pong}
-            for node in KNOWN_NODES:
+            alive_workers = {list(d.keys())[0] for d in pong}
+            for node in KNOWN_CRAWLER_NODES:
                 db.node_status.update_one(
                     {'node': node},
                     {'$set': {
-                        'active': node in alive,
-                        'last_seen': time.time()
+                        'active': node in alive_workers,
+                        'last_seen': now
                     }},
                     upsert=True
                 )
         except Exception:
             pass
-        time.sleep(interval)
 
+        # 2. Indexer node heartbeat via Elasticsearch ping
+        try:
+            alive_indexer = es.ping()
+            db.node_status.update_one(
+                {'node': INDEXER_NODE_NAME},
+                {'$set': {
+                    'active': alive_indexer,
+                    'last_seen': now
+                }},
+                upsert=True
+            )
+        except Exception:
+            # mark indexer as down if ping fails
+            db.node_status.update_one(
+                {'node': INDEXER_NODE_NAME},
+                {'$set': {
+                    'active': False,
+                    'last_seen': now
+                }},
+                upsert=True
+            )
+
+        time.sleep(interval)
 
 # -------------------
 # Task Timeout & Re-queue Monitor
@@ -94,7 +119,6 @@ def monitor_tasks(interval=300):
             print(f"[!] Task {task['task_id']} timed out → requeued as {new.id}")
         time.sleep(interval)
 
-
 # -------------------
 # CLI: Enqueue Crawl
 # -------------------
@@ -113,7 +137,6 @@ def enqueue_crawl(url, depth, politeness):
         'error': None
     })
     print(f"[✔] Task queued: {url} (id={result.id})")
-
 
 # -------------------
 # CLI: Search
@@ -154,7 +177,6 @@ def do_search(keywords, mode, size):
     for h in hits:
         print(" •", h['_source']['url'])
 
-
 # -------------------
 # CLI: Status
 # -------------------
@@ -165,14 +187,18 @@ def show_status():
     except Exception:
         indexed = 0
     total_tasks = db.task_status.count_documents({})
-    active_nodes = db.node_status.count_documents({'active': True})
+    active_crawlers = db.node_status.count_documents({'node': {'$in': KNOWN_CRAWLER_NODES}, 'active': True})
+    indexer_status = db.node_status.find_one({'node': INDEXER_NODE_NAME})
 
     print("--- System Status ---")
     print(f"Pages crawled: {crawled}")
     print(f"Pages indexed: {indexed}")
     print(f"Total tasks: {total_tasks}")
-    print(f"Active crawlers: {active_nodes}")
-
+    print(f"Active crawlers: {active_crawlers}")
+    if indexer_status:
+        print(f"Indexer active: {indexer_status['active']} (last seen {time.ctime(indexer_status['last_seen'])})")
+    else:
+        print("Indexer status: unknown")
 
 # -------------------
 # Main CLI handler
