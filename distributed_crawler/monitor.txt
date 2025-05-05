@@ -1,0 +1,2 @@
+/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/tests/../master_node.py:69: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
+  alive_indexer = es.ping()

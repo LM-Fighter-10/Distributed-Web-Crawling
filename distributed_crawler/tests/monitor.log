@@ -1,0 +1,69 @@
+🔹 1) Starting heartbeat & timeout monitors (5s interval)…
+    → MON_PID=19309
+
+🔹 2) Testing CLI search modes…
+   • match → /home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:161: DeprecationWarning: Received 'size' via a specific parameter in the presence of a 'body' parameter, which is deprecated and will be removed in a future version. Instead, use only 'body' or only specific parameters.
+  resp = es.search(index="web_pages", body=q, size=size)
+/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:161: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
+  resp = es.search(index="web_pages", body=q, size=size)
+Found 2 results for 'example' (mode=match, size=2):
+ • https://www.youtube.com/t/privacy
+ • https://www.iana.org/domains/example
+   • boolean → /home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:161: DeprecationWarning: Received 'size' via a specific parameter in the presence of a 'body' parameter, which is deprecated and will be removed in a future version. Instead, use only 'body' or only specific parameters.
+  resp = es.search(index="web_pages", body=q, size=size)
+/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:161: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
+  resp = es.search(index="web_pages", body=q, size=size)
+Found 2 results for 'example' (mode=boolean, size=2):
+ • https://www.youtube.com/t/privacy
+ • https://www.iana.org/domains/example
+   • phrase → /home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:161: DeprecationWarning: Received 'size' via a specific parameter in the presence of a 'body' parameter, which is deprecated and will be removed in a future version. Instead, use only 'body' or only specific parameters.
+  resp = es.search(index="web_pages", body=q, size=size)
+/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:161: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
+  resp = es.search(index="web_pages", body=q, size=size)
+Found 2 results for 'example' (mode=phrase, size=2):
+ • https://www.youtube.com/t/privacy
+ • https://www.iana.org/domains/example
+
+🔹 3) Testing CLI status (crawler & indexer heartbeat)…
+/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:186: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
+  indexed = es.count(index='web_pages')['count']
+--- System Status ---
+Pages crawled: 93
+Pages indexed: 607
+Total tasks: 6
+Active crawlers: 1
+Indexer active: True (last seen Mon May  5 22:40:52 2025)
+    ✓ Crawlers OK
+    ✓ Indexer OK
+
+🔹 4) Testing Indexer API endpoints…
+   • /search?mode=match → 200   ✓
+   • /search?mode=boolean → 200   ✓
+   • /search?mode=phrase → 200   ✓
+   • /metrics → 200   ✓
+
+🔹 5) Testing fault-tolerant indexing retry…
+    • state = SUCCESS
+
+🔹 6) Simulating ES DOWN (block via iptables)…
+--- System Status ---
+Pages crawled: 93
+Pages indexed: 0
+Total tasks: 6
+Active crawlers: 1
+Indexer active: False (last seen Mon May  5 22:41:07 2025)
+    ✓ DOWN detected
+🔹 Restoring ES access…
+/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:186: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
+  indexed = es.count(index='web_pages')['count']
+--- System Status ---
+Pages crawled: 93
+Pages indexed: 607
+Total tasks: 6
+Active crawlers: 1
+Indexer active: True (last seen Mon May  5 22:41:33 2025)
+    ✓ UP detected
+
+🔹 7) Testing stale-task timeout & requeue…
+./test_all_features.sh: line 95: mongo: command not found
+🧹 Cleaning up…
