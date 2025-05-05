@@ -44,7 +44,7 @@ KNOWN_NODES = ['celery@crawler-node']
 # -------------------
 # Heartbeat Monitor
 # -------------------
-def heartbeat_monitor(interval=60):
+def heartbeat_monitor(interval=10):
     while True:
         try:
             pong = app.control.ping(timeout=5.0)
