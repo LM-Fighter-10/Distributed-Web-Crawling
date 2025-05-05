@@ -40,6 +40,7 @@ es = Elasticsearch([
 # URL normalization helper
 # -------------------
 def normalize_url(url: str) -> str:
+    """Make URLs canonical (strip trailing slash, lowercase host)."""
     parsed = urlparse(url)
     path = parsed.path.rstrip('/') or '/'
     return urlunparse((
@@ -63,7 +64,6 @@ def index_document(self, doc_id: str, body: dict):
     try:
         es.index(index='web_pages', id=doc_id, body=body)
     except Exception as exc:
-        # Log the failure for later inspection
         mongo = get_mongo_client()
         db = mongo['Crawler']
         db.index_failures.insert_one({
@@ -74,132 +74,129 @@ def index_document(self, doc_id: str, body: dict):
             'timestamp': time.time()
         })
         mongo.close()
-        # Retry the task
         raise self.retry(exc=exc)
+
+# -------------------
+# Recursive crawl helper
+# -------------------
+def process_url(u: str, current_depth: int, seed_domain: str, politeness: float, visited: set, robots_cache: dict):
+    if current_depth < 0:
+        return
+
+    # Normalize & validate
+    u = normalize_url(u)
+    parsed = urlparse(u)
+    if not parsed.scheme or not parsed.netloc:
+        return
+
+    # Stay in same domain
+    if tldextract.extract(u).registered_domain != seed_domain:
+        return
+
+    # Fetch & cache robots.txt
+    domain_key = f"{parsed.scheme}://{parsed.netloc}"
+    if domain_key not in robots_cache:
+        rerp = RobotExclusionRulesParser()
+        try:
+            rerp.fetch(f"{domain_key}/robots.txt")
+            robots_cache[domain_key] = rerp
+        except Exception:
+            robots_cache[domain_key] = None
+    rerp = robots_cache[domain_key]
+    if not rerp or not rerp.is_allowed("MyCrawlerBot", u):
+        return
+
+    # Deduplicate
+    if u in visited:
+        return
+    visited.add(u)
+
+    # Respect crawl-delay
+    delay = rerp.get_crawl_delay("MyCrawlerBot") or politeness
+    time.sleep(delay)
+
+    # Fetch page
+    try:
+        resp = requests.get(u, timeout=10, verify=False)
+        resp.raise_for_status()
+    except Exception:
+        return
+
+    # Parse text
+    soup = BeautifulSoup(resp.text, 'html.parser')
+    text = soup.get_text(separator='\n', strip=True)
+
+    # Persist text in Mongo
+    mongo = get_mongo_client()
+    db = mongo['Crawler']
+    db.crawled_pages.update_one(
+        {'url': u},
+        {'$set': {
+            'text': text,
+            'depth': current_depth,
+            'timestamp': time.time()
+        }},
+        upsert=True
+    )
+
+    # Generate SHA-1 doc_id
+    doc_id = hashlib.sha1(u.encode('utf-8')).hexdigest()
+
+    # Enqueue fault-tolerant indexing
+    index_document.delay(doc_id, {'url': u, 'text': text})
+
+    # Upload raw HTML to GCS
+    try:
+        gcs = storage.Client()
+        bucket = gcs.bucket('distributed-crawler')
+        blob = bucket.blob(f"{doc_id}.html")
+        blob.upload_from_string(resp.text, content_type='text/html')
+    except Exception as exc:
+        db.index_failures.insert_one({
+            'doc_id': doc_id,
+            'error': f"GCS upload failed: {exc}",
+            'timestamp': time.time()
+        })
+
+    mongo.close()
+
+    # Discover & recurse
+    for link in soup.find_all('a', href=True):
+        href = link['href'].strip()
+        if not href or href.startswith('javascript:'):
+            continue
+        absolute = urljoin(u, href)
+        process_url(absolute, current_depth - 1, seed_domain, politeness, visited, robots_cache)
 
 # -------------------
 # Crawl task
 # -------------------
 @app.task(bind=True)
 def crawl_url(self, seed_url: str, depth: int, politeness: float):
-    """Crawl a site to the given depth, index pages, store raw HTML in GCS."""
+    """
+    Crawl a site to the given depth, index pages, store raw HTML in GCS.
+    """
     mongo = get_mongo_client()
     db = mongo['Crawler']
+
+    # Mark task queued→started
+    db.task_status.update_one(
+        {'task_id': self.request.id},
+        {'$set': {'status': 'started', 'started_at': time.time()}},
+        upsert=True
+    )
+
     visited = set()
     robots_cache = {}
     seed_domain = tldextract.extract(seed_url).registered_domain
 
-    try:
-        # Mark task queued→started
-        db.task_status.update_one(
-            {'task_id': self.request.id},
-            {'$set': {'status': 'started', 'started_at': time.time()}},
-            upsert=True
-        )
+    # Kick off recursion
+    process_url(seed_url, depth, seed_domain, politeness, visited, robots_cache)
 
-        def process_url(u: str, current_depth: int):
-            nonlocal visited, robots_cache
-
-            if current_depth < 0:
-                return
-
-            # Normalize & validate
-            u = normalize_url(u)
-            parsed = urlparse(u)
-            if not parsed.scheme or not parsed.netloc:
-                return
-
-            # Stay in same domain
-            if tldextract.extract(u).registered_domain != seed_domain:
-                return
-
-            # Fetch & cache robots.txt
-            domain_key = f"{parsed.scheme}://{parsed.netloc}"
-            if domain_key not in robots_cache:
-                rerp = RobotExclusionRulesParser()
-                try:
-                    rerp.fetch(f"{domain_key}/robots.txt")
-                    robots_cache[domain_key] = rerp
-                except Exception:
-                    robots_cache[domain_key] = None
-            rerp = robots_cache[domain_key]
-            if not rerp or not rerp.is_allowed("MyCrawlerBot", u):
-                return
-
-            # Deduplicate
-            if u in visited:
-                return
-            visited.add(u)
-
-            # Respect crawl-delay
-            delay = (rerp.get_crawl_delay("MyCrawlerBot") or politeness)
-            time.sleep(delay)
-
-            # Fetch page
-            try:
-                resp = requests.get(u, timeout=10, verify=False)
-                resp.raise_for_status()
-            except Exception:
-                return
-
-            # Parse text
-            soup = BeautifulSoup(resp.text, 'html.parser')
-            text = soup.get_text(separator='\n', strip=True)
-
-            # Persist text in Mongo
-            db.crawled_pages.update_one(
-                {'url': u},
-                {'$set': {
-                    'text': text,
-                    'depth': depth - current_depth,
-                    'timestamp': time.time()
-                }},
-                upsert=True
-            )
-
-            # Generate SHA-1 doc_id
-            doc_id = hashlib.sha1(u.encode('utf-8')).hexdigest()
-
-            # Enqueue fault-tolerant indexing
-            index_document.delay(doc_id, {'url': u, 'text': text})
-
-            # Upload raw HTML to GCS
-            try:
-                gcs = storage.Client()
-                bucket = gcs.bucket('distributed-crawler')
-                blob = bucket.blob(f"{doc_id}.html")
-                blob.upload_from_string(resp.text, content_type='text/html')
-            except Exception as exc:
-                # Log any GCS upload failures
-                db.index_failures.insert_one({
-                    'doc_id': doc_id,
-                    'error': f"GCS upload failed: {exc}",
-                    'timestamp': time.time()
-                })
-
-            # Discover & recurse
-            for link in soup.find_all('a', href=True):
-                href = link['href'].strip()
-                if not href or href.startswith('javascript:'):
-                    continue
-                absolute = urljoin(u, href)
-                process_url(absolute, current_depth - 1)
-
-        # Kick off crawl recursion
-        process_url(seed_url, depth)
-
-        # Mark task completed
-        db.task_status.update_one(
-            {'task_id': self.request.id},
-            {'$set': {'status': 'completed', 'finished_at': time.time()}}
-        )
-
-    except Exception as e:
-        # Mark failure
-        db.task_status.update_one(
-            {'task_id': self.request.id},
-            {'$set': {'status': 'failed', 'error': str(e)}}
-        )
-        raise
-    finally:
-        mongo.close()
+    # Mark task completed
+    db.task_status.update_one(
+        {'task_id': self.request.id},
+        {'$set': {'status': 'completed', 'finished_at': time.time()}},
+        upsert=True
+    )
+    mongo.close()
