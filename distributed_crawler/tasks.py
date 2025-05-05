@@ -21,6 +21,7 @@ app = Celery(
     broker='redis://10.128.0.2:6379/0',
     backend='redis://10.128.0.2:6379/1',
 )
+app.config_from_object('celeryconfig')
 app.conf.update(task_track_started=True)
 
 # -------------------
