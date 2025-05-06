@@ -1,0 +1,3 @@
+nohup: ignoring input
+/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:65: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
+  alive_indexer = es.ping()

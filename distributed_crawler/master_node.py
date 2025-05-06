@@ -38,7 +38,7 @@ es = Elasticsearch([
 # -------------------
 # Heartbeat Monitor
 # -------------------
-def heartbeat_monitor(interval=60):
+def heartbeat_monitor(interval=10):
     while True:
         now = time.time()
         # 1. Crawler worker heartbeats via Celery ping
