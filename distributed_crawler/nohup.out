@@ -1,27 +1,5 @@
-/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:69: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
-  alive_indexer = es.ping()
-/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:69: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
-  alive_indexer = es.ping()
-python3: can't open file '/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/../master_node.py': [Errno 2] No such file or directory
-  File "/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py", line 43
-    KNOWN_NODES = ['celery@crawler-node'] :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
-                                          ^
-SyntaxError: invalid syntax
-  File "/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py", line 43
-    KNOWN_NODES = ['celery@crawler-node'] :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
-                                          ^
-SyntaxError: invalid syntax
-  File "/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py", line 43
-    KNOWN_NODES = ['celery@crawler-node'] :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
-                                          ^
-SyntaxError: invalid syntax
-  File "/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py", line 43
-    KNOWN_NODES = ['celery@crawler-node'] :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
-                                          ^
-SyntaxError: invalid syntax
-  File "/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py", line 43
-    KNOWN_NODES = ['celery@crawler-node'] :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
-                                          ^
-SyntaxError: invalid syntax
-/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py:65: ElasticsearchWarning: Elasticsearch built-in security features are not enabled. Without authentication, your cluster could be accessible to anyone. See https://www.elastic.co/guide/en/elasticsearch/reference/7.17/security-minimal-setup.html to enable security.
-  alive_indexer = es.ping()
+
+Traceback (most recent call last):
+  File "/home/omaralaa927/Distributed-Web-Crawling/distributed_crawler/master_node.py", line 205, in <module>
+    subs.add_parser('monitor','--monitor', help='Start monitors', action='store_true')
+TypeError: _SubParsersAction.add_parser() takes 2 positional arguments but 3 were given

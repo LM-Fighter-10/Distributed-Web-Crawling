@@ -201,9 +201,9 @@ if __name__ == '__main__':
     p2.add_argument('-n','--size', type=int, default=10)
 
     # status & monitor
-    subs.add_parser('status', help='Show system status')
-    subs.add_parser('monitor','--monitor', help='Start monitors', action='store_true')
-
+    subs.add_parser('status',  help='Show system status')
+    subs.add_parser('monitor', help='Start monitors')
+    
     args = parser.parse_args()
 
     if args.cmd == 'crawl':
